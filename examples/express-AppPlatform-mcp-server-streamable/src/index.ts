@@ -351,6 +351,8 @@ setupServer()
       console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(`OAuth metadata: http://localhost:${PORT}/.well-known/oauth-authorization-server`);
+      console.log(`Debug OAuth: http://localhost:${PORT}/debug/oauth`);
+      console.log(`API info: http://localhost:${PORT}/api`);
       
       // Debug: List all registered routes
       console.log('\nRegistered routes:');
@@ -358,7 +360,7 @@ setupServer()
         if (middleware.route) {
           console.log(`  ${middleware.route.path} [${Object.keys(middleware.route.methods).join(', ').toUpperCase()}]`);
         } else if (middleware.name === 'router') {
-          console.log(`  Router middleware`);
+          console.log(`  Router middleware (possibly Descope OAuth)`);
           if (middleware.handle && middleware.handle.stack) {
             middleware.handle.stack.forEach((nestedRoute: any) => {
               if (nestedRoute.route) {
