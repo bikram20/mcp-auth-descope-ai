@@ -8,6 +8,22 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 dotenv.config();
+
+// Validate required environment variables
+const requiredEnvVars = ['DESCOPE_PROJECT_ID', 'DESCOPE_MANAGEMENT_KEY', 'SERVER_URL'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  console.error('Missing required environment variables:', missingEnvVars);
+  console.error('Please check your .env file and ensure all required variables are set.');
+  process.exit(1);
+}
+
+console.log('Environment variables loaded:');
+console.log('- DESCOPE_PROJECT_ID:', process.env.DESCOPE_PROJECT_ID ? 'Set' : 'Missing');
+console.log('- DESCOPE_MANAGEMENT_KEY:', process.env.DESCOPE_MANAGEMENT_KEY ? 'Set' : 'Missing');
+console.log('- SERVER_URL:', process.env.SERVER_URL);
+
 const PORT = process.env.PORT || 3000;
 
 const NWS_API_BASE = "https://api.weather.gov";
@@ -241,12 +257,24 @@ const transport = new StreamableHTTPServerTransport({
 });
 
 // Descope MCP Auth - moved after transport initialization
-app.use(descopeMcpAuthRouter());
+// IMPORTANT: The auth router must come BEFORE other routes to handle OAuth endpoints
+const authRouter = descopeMcpAuthRouter();
+app.use(authRouter);
 app.use(["/mcp"], descopeMcpBearerAuth());
 
 // Add a health check endpoint
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Add a debug endpoint to check OAuth metadata
+app.get('/.well-known/oauth-authorization-server', (req: Request, res: Response) => {
+  console.log('OAuth metadata requested');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // Let the actual handler from Descope take over
+  req.next?.();
 });
 
 // Add a root endpoint for testing
@@ -255,7 +283,13 @@ app.get('/', (req: Request, res: Response) => {
     message: 'Weather MCP Server is running',
     endpoints: {
       mcp: '/mcp',
-      health: '/health'
+      health: '/health',
+      oauth_metadata: '/.well-known/oauth-authorization-server'
+    },
+    environment: {
+      hasDescopeProjectId: !!process.env.DESCOPE_PROJECT_ID,
+      hasDescopeManagementKey: !!process.env.DESCOPE_MANAGEMENT_KEY,
+      serverUrl: process.env.SERVER_URL
     }
   });
 });
@@ -316,6 +350,24 @@ setupServer()
       console.log(`Server URL: http://localhost:${PORT}`);
       console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
       console.log(`Health check: http://localhost:${PORT}/health`);
+      console.log(`OAuth metadata: http://localhost:${PORT}/.well-known/oauth-authorization-server`);
+      
+      // Debug: List all registered routes
+      console.log('\nRegistered routes:');
+      app._router.stack.forEach((middleware, index) => {
+        if (middleware.route) {
+          console.log(`  ${middleware.route.path} [${Object.keys(middleware.route.methods).join(', ').toUpperCase()}]`);
+        } else if (middleware.name === 'router') {
+          console.log(`  Router middleware`);
+          if (middleware.handle && middleware.handle.stack) {
+            middleware.handle.stack.forEach((nestedRoute) => {
+              if (nestedRoute.route) {
+                console.log(`    ${nestedRoute.route.path} [${Object.keys(nestedRoute.route.methods).join(', ').toUpperCase()}]`);
+              }
+            });
+          }
+        }
+      });
     });
   })
   .catch(error => {
