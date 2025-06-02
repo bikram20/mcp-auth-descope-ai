@@ -3,10 +3,21 @@ import express from "express";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { createServer } from "./create-server.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { descopeMcpAuthRouter, descopeMcpBearerAuth, DescopeMcpProvider, DescopeMcpProviderOptions } from "@descope/mcp-express";
 import cors from "cors";
 import path from 'path';
+
+// Define AuthInfo type locally to match @descope/mcp-express expectations
+interface AuthInfo {
+    /** The access token */
+    token: string;
+    /** The client ID associated with this token */
+    clientId: string;
+    /** Scopes associated with this token */
+    scopes: string[];
+    /** When the token expires (in seconds since epoch) */
+    expiresAt?: number;
+}
 
 declare module "express-serve-static-core" {
     interface Request {
