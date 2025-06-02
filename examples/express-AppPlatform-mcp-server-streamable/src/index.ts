@@ -299,8 +299,8 @@ const setupServer = async () => {
     await server.connect(transport);
     console.log('MCP Server connected to transport successfully');
     
-    // Verify tools are registered
-    console.log('Registered tools:', Object.keys(server.tools || {}));
+    // Server connected successfully
+    console.log('MCP Server setup complete');
     
   } catch (error) {
     console.error('Failed to set up the MCP server:', error);
