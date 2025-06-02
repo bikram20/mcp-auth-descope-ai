@@ -7,19 +7,8 @@ import { descopeMcpAuthRouter, descopeMcpBearerAuth } from "@descope/mcp-express
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-// import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-
-// declare global {
-//     namespace Express {
-//         interface Request {
-//             auth?: AuthInfo;
-//         }
-//     }
-// }
-
 dotenv.config();
 const PORT = process.env.PORT || 3000;
-
 
 const NWS_API_BASE = "https://api.weather.gov";
 const USER_AGENT = "weather-app/1.0";
@@ -100,7 +89,6 @@ interface ForecastResponse {
     periods: ForecastPeriod[];
   };
 }
-
 
 // Register weather tools
 server.tool(
@@ -235,7 +223,6 @@ server.tool(
   },
 );
 
-
 const app = express();
 
 // Middleware setup
@@ -248,19 +235,36 @@ app.use(cors({
 }));
 app.options("*", cors());
 
-// Descope MCP Auth
-app.use(descopeMcpAuthRouter());
-app.use(["/mcp"], descopeMcpBearerAuth());
-
-
-// Initialize transport
+// Initialize transport BEFORE using it
 const transport = new StreamableHTTPServerTransport({
   sessionIdGenerator: undefined, // set to undefined for stateless servers
 });
 
-// MCP endpoint
+// Descope MCP Auth - moved after transport initialization
+app.use(descopeMcpAuthRouter());
+app.use(["/mcp"], descopeMcpBearerAuth());
+
+// Add a health check endpoint
+app.get('/health', (req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Add a root endpoint for testing
+app.get('/', (req: Request, res: Response) => {
+  res.json({ 
+    message: 'Weather MCP Server is running',
+    endpoints: {
+      mcp: '/mcp',
+      health: '/health'
+    }
+  });
+});
+
+// MCP endpoint with better error handling
 app.post('/mcp', async (req: Request, res: Response) => {
-  console.log('Received MCP request:', req.body);
+  console.log('Received MCP request:', JSON.stringify(req.body, null, 2));
+  console.log('Request headers:', req.headers);
+  
   try {
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
@@ -272,36 +276,34 @@ app.post('/mcp', async (req: Request, res: Response) => {
           code: -32603,
           message: 'Internal server error',
         },
-        id: null,
+        id: req.body?.id || null,
       });
     }
   }
 });
 
-
-// // Method not allowed handlers
-// const methodNotAllowed = (req: Request, res: Response) => {
-//     console.log(`Received ${req.method} MCP request`);
-//     res.status(405).json({
-//         jsonrpc: "2.0",
-//         error: {
-//             code: -32000,
-//             message: "Method not allowed."
-//         },
-//         id: null
-//     });
-// };
-
-// app.get('/mcp', methodNotAllowed);
-// app.delete('/mcp', methodNotAllowed);
+// Add GET endpoint for testing (though MCP should use POST)
+app.get('/mcp', (req: Request, res: Response) => {
+  console.log('Received GET request to /mcp');
+  res.json({
+    message: 'MCP endpoint is available. Use POST with JSON-RPC 2.0 format.',
+    server: 'weather-mcp-server',
+    version: '1.0.1'
+  });
+});
 
 // Server setup
 const setupServer = async () => {
   try {
+    // Connect server to transport
     await server.connect(transport);
-    console.log('Server connected successfully');
+    console.log('MCP Server connected to transport successfully');
+    
+    // Verify tools are registered
+    console.log('Registered tools:', Object.keys(server.tools || {}));
+    
   } catch (error) {
-    console.error('Failed to set up the server:', error);
+    console.error('Failed to set up the MCP server:', error);
     throw error;
   }
 };
@@ -311,6 +313,9 @@ setupServer()
   .then(() => {
     app.listen(PORT, () => {
       console.log(`MCP Streamable HTTP Server listening on port ${PORT}`);
+      console.log(`Server URL: http://localhost:${PORT}`);
+      console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
+      console.log(`Health check: http://localhost:${PORT}/health`);
     });
   })
   .catch(error => {
@@ -319,20 +324,20 @@ setupServer()
   });
 
 // Handle server shutdown
-// process.on('SIGINT', async () => {
-//     console.log('Shutting down server...');
-//     try {
-//         console.log(`Closing transport`);
-//         await transport.close();
-//     } catch (error) {
-//         console.error(`Error closing transport:`, error);
-//     }
+process.on('SIGINT', async () => {
+  console.log('Shutting down server...');
+  try {
+    console.log('Closing transport');
+    await transport.close();
+  } catch (error) {
+    console.error('Error closing transport:', error);
+  }
 
-//     try {
-//         await server.close();
-//         console.log('Server shutdown complete');
-//     } catch (error) {
-//         console.error('Error closing server:', error);
-//     }
-//     process.exit(0);
-// });
+  try {
+    await server.close();
+    console.log('Server shutdown complete');
+  } catch (error) {
+    console.error('Error closing server:', error);
+  }
+  process.exit(0);
+});
