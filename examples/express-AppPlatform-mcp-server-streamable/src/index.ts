@@ -268,13 +268,13 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // Add a debug endpoint to check OAuth metadata
-app.get('/.well-known/oauth-authorization-server', (req: Request, res: Response) => {
+app.get('/.well-known/oauth-authorization-server', (req: Request, res: Response, next) => {
   console.log('OAuth metadata requested');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   // Let the actual handler from Descope take over
-  req.next?.();
+  next();
 });
 
 // Add a root endpoint for testing
@@ -354,13 +354,13 @@ setupServer()
       
       // Debug: List all registered routes
       console.log('\nRegistered routes:');
-      app._router.stack.forEach((middleware, index) => {
+      (app as any)._router.stack.forEach((middleware: any, index: number) => {
         if (middleware.route) {
           console.log(`  ${middleware.route.path} [${Object.keys(middleware.route.methods).join(', ').toUpperCase()}]`);
         } else if (middleware.name === 'router') {
           console.log(`  Router middleware`);
           if (middleware.handle && middleware.handle.stack) {
-            middleware.handle.stack.forEach((nestedRoute) => {
+            middleware.handle.stack.forEach((nestedRoute: any) => {
               if (nestedRoute.route) {
                 console.log(`    ${nestedRoute.route.path} [${Object.keys(nestedRoute.route.methods).join(', ').toUpperCase()}]`);
               }
